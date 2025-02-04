@@ -4,18 +4,15 @@ const UglifyJS = require('uglify-js');
 const path = require('path');
 const app = express();
 
-// Middleware to serve minified JavaScript file
 app.get('/vrclient.min.js', (req, res) => {
     const filePath = path.join(__dirname, 'client.js');
 
-    // Check if the file exists
     if (!fs.existsSync(filePath)) {
         console.error('File not found:', filePath);
         res.status(404).send('File not found');
         return;
     }
 
-    // Read the original JavaScript file
     fs.readFile(filePath, 'utf8', (err, code) => {
         if (err) {
             console.error('Error reading file:', err);
@@ -23,11 +20,9 @@ app.get('/vrclient.min.js', (req, res) => {
             return;
         }
 
-        // Minify the code using UglifyJS
         try {
             const minifiedCode = UglifyJS.minify(code).code;
 
-            // Set appropriate headers for JavaScript
             res.setHeader('Content-Type', 'application/javascript');
             res.send(minifiedCode);
         } catch (e) {
@@ -37,7 +32,6 @@ app.get('/vrclient.min.js', (req, res) => {
     });
 });
 
-// Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
