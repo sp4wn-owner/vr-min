@@ -293,24 +293,20 @@ async function startStream() {
         const VRSuccess = await handleVROnConnection();
         if (VRSuccess) {
             console.log("VR loaded");
-            
-            // Check ICE connection status before waiting for data channels to open
-            console.log("Checking ICE connection status...");
-            const isConnected = await checkICEStatus('connected');
-            if (isConnected) {
-                console.log("ICE connected. Now waiting for data channels to open...");
-                
-                if (await waitForChannelsToOpen()) {
-                    console.log("Data channels are open. Proceeding with video confirmation...");
+            if (await waitForChannelsToOpen()) {
+                console.log("Data channels are open. Proceeding with ICE status check...");
+                const isConnected = await checkICEStatus('connected');
+                if (isConnected) {
+                    console.log("ICE connected. Proceeding with video confirmation...");
                     const isStreamReceivingData = await isStreamLive();
                     if (isStreamReceivingData) {
                         console.log("Stream is receiving data. Attempting token redemption...");
                         removeVideoOverlayListeners();
                         const redeemSuccess = await startAutoRedeem(tokenrate);
-                        if (!redeemSuccess) {
+                        if (!redeemSuccess) {  
                             console.error('Token redemption failed.');
                         } else {
-                            console.log("Successfully started stream");
+                            console.log("Successfully started stream"); 
                             vrButton.style.display = "inline-block";
                             spawnButton.textContent = "End";
                             spawnButton.onclick = endStream;
@@ -319,10 +315,10 @@ async function startStream() {
                         throw new Error('Stream is not live.');
                     }
                 } else {
-                    throw new Error('Failed to open data channels.');
+                    throw new Error('ICE connection failed.');
                 }
             } else {
-                throw new Error('ICE connection failed.');
+                throw new Error('Failed to open data channels.');
             }
         } else {
             throw new Error('VR failed to load.');
