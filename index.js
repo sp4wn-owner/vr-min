@@ -174,6 +174,19 @@ async function handleSignalingData(message, resolve) {
                 console.log("no answer peer connection");
             }
             break;
+        case 'candidate':
+            if (message.candidate) {
+                try {
+                    const candidate = new RTCIceCandidate(message.candidate);
+                    await peerConnection.addIceCandidate(candidate);
+                    console.log('ICE candidate added successfully.');
+                } catch (error) {
+                    console.error('Error adding ICE candidate:', error);
+                }
+            } else {
+                console.warn('No ICE candidate in the message.');
+            }
+            break;
 
         case "watch":
             watchStream(message.name, message.pw);
