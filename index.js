@@ -36,7 +36,7 @@ const maxReconnectAttempts = 20;
 let reconnectAttempts = 0;
 const reconnectDelay = 2000;
 let isGuest = true;
-let botdevicetype;
+let botDeviceType;
 let jmuxer;
 let isVideoChannelReceivingData = false;
 const wsUrl = 'https://sp4wn-signaling-server.onrender.com';
@@ -308,7 +308,7 @@ async function initSpawn() {
   
     await closeDataChannels();
 
-    if (botdevicetype == "pi" || botdevicetype == "dropbear") {
+    if (botDeviceType == "pi" || botDeviceType == "dropbear") {
         await openCustomConnection();
     } else {
         await openPeerConnection();
@@ -408,7 +408,7 @@ async function startStream() {
                 if (isConnected) {
                     console.log("ICE connected. Proceeding with video confirmation...");
                     let isVideoReady = false;
-                    if (botdevicetype == "pi" || botdevicetype == "dropbear") {
+                    if (botDeviceType == "pi" || botDeviceType == "dropbear") {
                         isVideoReady = await checkIfVideoChannelIsReceivingData();
                     } else {
                         isVideoReady = await isStreamLive();
@@ -546,7 +546,7 @@ async function start() {
             return;
         }
         tokenrate = Number(result.tokenrate);
-        botdevicetype = result.deviceType;
+        botDeviceType = result.deviceType;
         if (result.isPrivate) {
             modalPassword.style.display = "block";
         } else {
@@ -643,7 +643,7 @@ function setupDataChannelListenerWithTimeout() {
         let requiredChannels;
         const timeoutDuration = 15000;
         let timeoutId;
-        if(deviceType == "pi" || deviceType == "dropbear") {
+        if(botDeviceType == "pi" || botDeviceType == "dropbear") {
             requiredChannels = 2;
         } else {
             requiredChannels = 1;
