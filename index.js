@@ -177,6 +177,7 @@ async function handleSignalingData(message, resolve) {
                 console.log("no answer peer connection");
             }
             break;
+            
         case 'candidate':
             if (message.candidate) {
                 try {
@@ -1078,15 +1079,21 @@ async function enterVR() {
 }
 
 function exitVR() {
-    if (renderer.xr.getSession()) {
-        renderer.xr.getSession().end().then(() => {
-            console.log('VR session ended');
-        });
-    }
-    container.style.display = "none";
-    remoteVideo.style.display = "block";
-    vrButton.textContent = "Enter VR";
-    vrButton.onclick = enterVR;
+  try {
+      if (renderer.xr.getSession()) {
+          renderer.xr.getSession().end().then(() => {
+              console.log('VR session ended');
+          }).catch(error => {
+              console.error('Error ending VR session:', error);
+          });
+      }
+      container.style.display = "none";
+      remoteVideo.style.display = "block";
+      vrButton.textContent = "Enter VR";
+      vrButton.onclick = enterVR;
+  } catch (error) {
+      console.error('Error in exitVR function:', error);
+  }
 }
 
 confirmLoginButton.onclick = login;
