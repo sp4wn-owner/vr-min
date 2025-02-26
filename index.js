@@ -41,6 +41,7 @@ let jmuxer;
 let isVideoChannelReceivingData = false;
 const wsUrl = 'https://sp4wn-signaling-server.onrender.com';
 let fullWidth, fullHeight, aspectRatio, roundedAspectRatio;
+let detectedFormat = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   let robotCookie = getCookie('robotusername');
@@ -332,6 +333,35 @@ async function initSpawn() {
     }
   };
 
+  peerConnection.oniceconnectionstatechange = () => {
+    if (!peerConnection) {
+      console.error('Peer connection is not initialized.');
+      return;
+    }
+
+    switch (peerConnection.iceConnectionState) {
+      case 'new':
+        console.log('ICE Connection State is new.');
+        break;
+      case 'checking':
+        console.log('ICE Connection is checking.');
+        break;
+      case 'connected':
+        console.log('ICE Connection has been established.');
+        break;
+      case 'completed':
+        console.log('ICE Connection is completed.');
+        break;
+      case 'failed':
+        console.log("peer connection failed");
+      case 'disconnected':
+        console.log("peer disconnected");
+        endStream();
+      case 'closed':
+        break;
+    }
+  };
+
   send({
     type: "watch",
     username: username,
@@ -571,9 +601,14 @@ async function closeDataChannels() {
       if (inputChannel && inputChannel.readyState === 'open') {
         inputChannel.close();
         inputChannel = null;
-        console.log("Closed input channel.");
+        console.log("Closed input channel on disconnect");
       }
-      console.log("Closed data channels");
+      if (videoChannel && videoChannel.readyState === 'open') {
+        videoChannel.close();
+        videoChannel = null;
+        console.log("Closed video channel on disconnect");
+      }
+      console.log("Closed data channels on disconnect");
       resolve();
     } else {
       resolve();
@@ -689,6 +724,96 @@ function setupDataChannelListenerWithTimeout() {
   });
 }
 
+let buffer = new Uint8Array(0);
+let canvas = null;
+let ctx = null;
+let videoChannel = null;
+
+function detectFormat(data) {
+  const mjpegStartMarker = [0xFF, 0xD8];
+  if (data.slice(0, 2).every((byte, index) => byte === mjpegStartMarker[index])) {
+    return 'mjpeg';
+  }
+
+  const h264StartMarker3 = [0x00, 0x00, 0x01];
+  const h264StartMarker4 = [0x00, 0x00, 0x00, 0x01];
+  if (data.length >= 3 && data.slice(0, 3).every((byte, index) => byte === h264StartMarker3[index])) {
+    return 'h264';
+  }
+  if (data.length >= 4 && data.slice(0, 4).every((byte, index) => byte === h264StartMarker4[index])) {
+    return 'h264';
+  }
+
+  return null;
+}
+
+function findStartMarker(data) {
+  const startMarker = [0xFF, 0xD8];
+  for (let i = 0; i < data.length - 1; i++) {
+    if (data[i] === startMarker[0] && data[i + 1] === startMarker[1]) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function findEndMarker(data, startIdx) {
+  const endMarker = [0xFF, 0xD9];
+  for (let i = startIdx; i < data.length - 1; i++) {
+    if (data[i] === endMarker[0] && data[i + 1] === endMarker[1]) {
+      return i + 1;
+    }
+  }
+  return -1;
+}
+
+function initVideoCanvas(videoWidth, videoHeight) {
+  const remoteVideo = document.getElementById('remoteVideo');
+  remoteVideo.videoWidth = videoWidth;
+  remoteVideo.videoHeight = videoHeight;
+
+  if (videoWidth < 1280 || videoHeight < 720) {
+    remoteVideo.style.position = 'absolute';
+    remoteVideo.style.width = `${videoWidth}px`;
+    remoteVideo.style.height = `${videoHeight}px`;
+    remoteVideo.style.top = '50%';
+    remoteVideo.style.left = '50%';
+    remoteVideo.style.transform = 'translate(-50%, -50%)';
+    remoteVideo.style.background = 'none';
+  } else {
+    remoteVideo.style.width = '100%';
+    remoteVideo.style.height = '100%';
+  }
+
+  canvas = document.createElement('canvas');
+  canvas.width = videoWidth;
+  canvas.height = videoHeight;
+  ctx = canvas.getContext('2d');
+  canvas.style.position = remoteVideo.style.position;
+  canvas.style.width = remoteVideo.style.width;
+  canvas.style.height = remoteVideo.style.height;
+  canvas.style.top = remoteVideo.style.top || '0';
+  canvas.style.left = remoteVideo.style.left || '0';
+  canvas.style.transform = remoteVideo.style.transform || 'none';
+  canvas.style.zIndex = remoteVideo.style.zIndex || '1';
+  remoteVideo.parentNode.appendChild(canvas);
+  console.log('Initialized video canvas with dimensions:', videoWidth, 'x', videoHeight);
+}
+
+function drawStreamFrame() {
+  const remoteVideo = document.getElementById('remoteVideo');
+
+  if (!canvas && remoteVideo.readyState >= 2) {
+    initVideoCanvas(remoteVideo.videoWidth, remoteVideo.videoHeight);
+  }
+
+  if (canvas && remoteVideo.srcObject) {
+    ctx.drawImage(remoteVideo, 0, 0, canvas.width, canvas.height);
+  }
+
+  requestAnimationFrame(drawStreamFrame);
+}
+
 function handleVideoChannel(channel, incrementChannelCounter) {
   videoChannel = channel;
 
@@ -698,24 +823,117 @@ function handleVideoChannel(channel, incrementChannelCounter) {
 
   videoChannel.onmessage = async (event) => {
     isVideoChannelReceivingData = true;
-    let h264 = new Uint8Array(event.data);
-    try {
-      jmuxer.feed({
-        video: h264,
-      });
-    } catch (error) {
-      console.error(error);
+    console.log('Received data on videoChannel:', event.data.byteLength, 'bytes');
+    const data = new Uint8Array(event.data);
+
+    if (!detectedFormat) {
+      detectedFormat = detectFormat(data);
+      if (!detectedFormat) {
+        buffer = Uint8Array.from([...buffer, ...data]);
+        const startIdx = findStartMarker(buffer);
+        if (startIdx !== -1 && buffer.length - startIdx >= 4) {
+          detectedFormat = detectFormat(buffer.slice(startIdx));
+          console.log('Detected format from buffer:', detectedFormat || 'Unknown');
+        }
+        if (!detectedFormat && buffer.length > 10000) {
+          console.log('Assuming MJPEG after buffering', buffer.length, 'bytes');
+          detectedFormat = 'mjpeg';
+        }
+      } else {
+        console.log('Detected format:', detectedFormat);
+      }
     }
 
+    try {
+      if (detectedFormat === 'mjpeg') {
+        buffer = Uint8Array.from([...buffer, ...data]);
+
+        while (buffer.length > 4) {
+          const startIdx = findStartMarker(buffer);
+          if (startIdx === -1) {
+            console.warn('No MJPEG start found in buffer of size:', buffer.length);
+            console.log('Buffer sample (first 20 bytes):', buffer.slice(0, 20));
+            if (buffer.length > 10000) {
+              buffer = buffer.slice(-5000);
+              console.log('Trimmed buffer to last 5000 bytes to search for next frame');
+            }
+            break;
+          }
+
+          const endIdx = findEndMarker(buffer, startIdx + 2);
+          if (endIdx === -1) {
+            console.log('Waiting for frame end, buffer size:', buffer.byteLength);
+            break;
+          }
+
+          const frameEnd = endIdx + 2;
+          const frame = buffer.slice(startIdx, frameEnd);
+          console.log('Extracted MJPEG frame:', frame.byteLength, 'bytes');
+          const blob = new Blob([frame], { type: 'image/jpeg' });
+          const remoteVideo = document.getElementById('remoteVideo');
+          remoteVideo.srcObject = null;
+          remoteVideo.src = URL.createObjectURL(blob);
+
+          const tempImg = new Image();
+          tempImg.onload = () => {
+            if (!canvas) initVideoCanvas(tempImg.naturalWidth, tempImg.naturalHeight);
+            ctx.drawImage(tempImg, 0, 0, canvas.width, canvas.height);
+            console.log('MJPEG frame drawn to canvas');
+            URL.revokeObjectURL(remoteVideo.src);
+          };
+          tempImg.onerror = () => {
+            console.warn('Skipping invalid MJPEG frame');
+            URL.revokeObjectURL(remoteVideo.src);
+          };
+          tempImg.src = remoteVideo.src;
+
+          buffer = buffer.slice(frameEnd);
+        }
+      } else if (detectedFormat === 'h264') {
+        console.log('Feeding H.264 to JMuxer...');
+        jmuxer.feed({ video: data });
+      } else {
+        console.warn('Format not detected yet');
+        buffer = Uint8Array.from([...buffer, ...data]);
+        const startIdx = findStartMarker(buffer);
+        if (startIdx !== -1 && buffer.length - startIdx >= 4) {
+          detectedFormat = detectFormat(buffer.slice(startIdx));
+          console.log('Detected format from buffer:', detectedFormat || 'Unknown');
+          if (detectedFormat) buffer = new Uint8Array(0);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing video:', error.message, error.stack);
+    }
   };
 
   videoChannel.onclose = () => {
     isVideoChannelReceivingData = false;
+    console.log("Closed video channel");
   };
 
   videoChannel.onerror = (error) => {
     console.error("Video channel error:", error);
   };
+
+  const remoteVideo = document.getElementById('remoteVideo');
+  if (remoteVideo.srcObject) {
+    remoteVideo.onloadedmetadata = () => {
+      drawStreamFrame();
+    };
+    if (remoteVideo.readyState >= 2) {
+      drawStreamFrame();
+    }
+  }
+}
+
+if (remoteVideo.srcObject) {
+  remoteVideo.onloadedmetadata = () => {
+    drawStreamFrame();
+  };
+  if (remoteVideo.readyState >= 2) {
+    drawStreamFrame();
+  }
 }
 
 function handleInputChannel(channel, incrementChannelCounter) {
@@ -908,7 +1126,6 @@ function hideLoadingOverlay() {
 let scene, camera, renderer, referenceSpace, stereoCamera, videoTexture, videoMesh, leftMesh, rightMesh;
 const zDistance = -2;
 const zDistanceStereo = -1;
-//const eyeSep = 2; // use 2 for larger geometry
 let newAspectRatio;
 let eyeSep;
 
@@ -1171,17 +1388,22 @@ async function enterVR() {
 
 function exitVR() {
   try {
-    if (renderer.xr.getSession()) {
+    if (renderer && renderer.xr && renderer.xr.getSession()) {
       renderer.xr.getSession().end().then(() => {
         console.log('VR session ended');
       }).catch(error => {
         console.error('Error ending VR session:', error);
       });
+    } else {
+      console.log('No VR session to end or renderer is undefined');
     }
-    container.style.display = "none";
-    remoteVideo.style.display = "block";
-    vrButton.textContent = "Enter VR";
-    vrButton.onclick = enterVR;
+
+    if (container) container.style.display = "none";
+    if (remoteVideo) remoteVideo.style.display = "block";
+    if (vrButton) {
+      vrButton.textContent = "Enter VR";
+      vrButton.onclick = enterVR;
+    }
   } catch (error) {
     console.error('Error in exitVR function:', error);
   }
