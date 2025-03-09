@@ -1271,30 +1271,70 @@ function sendTrackingData(frame) {
 
     let controllerData = [];
     frame.session.inputSources.forEach((inputSource) => {
+      let controllerInfo = {};
+
       if (inputSource.gripSpace) {
         const gripPose = frame.getPose(inputSource.gripSpace, referenceSpace);
         if (gripPose) {
-          controllerData.push({
-            gripPosition: gripPose.transform.position,
-            gripOrientation: gripPose.transform.orientation
-          });
+          controllerInfo.gripPosition = {
+            x: gripPose.transform.position.x,
+            y: gripPose.transform.position.y,
+            z: gripPose.transform.position.z
+          };
+          controllerInfo.gripOrientation = {
+            x: gripPose.transform.orientation.x,
+            y: gripPose.transform.orientation.y,
+            z: gripPose.transform.orientation.z,
+            w: gripPose.transform.orientation.w
+          };
         }
       }
+
       if (inputSource.targetRaySpace) {
         const targetPose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
         if (targetPose) {
-          controllerData.push({
-            targetPosition: targetPose.transform.position,
-            targetOrientation: targetPose.transform.orientation
-          });
+          controllerInfo.targetPosition = {
+            x: targetPose.transform.position.x,
+            y: targetPose.transform.position.y,
+            z: targetPose.transform.position.z
+          };
+          controllerInfo.targetOrientation = {
+            x: targetPose.transform.orientation.x,
+            y: targetPose.transform.orientation.y,
+            z: targetPose.transform.orientation.z,
+            w: targetPose.transform.orientation.w
+          };
         }
       }
+
+      if (inputSource.gamepad) {
+        controllerInfo.gamepad = {
+          buttons: inputSource.gamepad.buttons.map(button => ({
+            pressed: button.pressed,
+            touched: button.touched,
+            value: button.value
+          })),
+          axes: inputSource.gamepad.axes.slice(),
+          hand: inputSource.handedness
+        };
+      }
+
+      controllerData.push(controllerInfo);
     });
 
     const trackingData = {
       head: {
-        position: headPosition,
-        orientation: headOrientation
+        position: {
+          x: headPosition.x,
+          y: headPosition.y,
+          z: headPosition.z
+        },
+        orientation: {
+          x: headOrientation.x,
+          y: headOrientation.y,
+          z: headOrientation.z,
+          w: headOrientation.w
+        }
       },
       controllers: controllerData
     };
