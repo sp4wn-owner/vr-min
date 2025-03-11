@@ -42,6 +42,10 @@ let isVideoChannelReceivingData = false;
 const wsUrl = 'https://sp4wn-signaling-server.onrender.com';
 let fullWidth, fullHeight, aspectRatio, roundedAspectRatio;
 let detectedFormat = null;
+let buffer = new Uint8Array(0);
+let canvas = null;
+let ctx = null;
+let videoChannel = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   let robotCookie = getCookie('robotusername');
@@ -316,10 +320,10 @@ async function initSpawn() {
 
   await closeDataChannels();
 
-  if (botDeviceType == "pi" || botDeviceType == "dropbear") {
-    await openCustomConnection();
-  } else {
+  if (botDeviceType == "pc") {
     await openPeerConnection();
+  } else {
+    await openCustomConnection();
   }
 
   peerConnection.onicecandidate = function (event) {
@@ -685,10 +689,10 @@ function setupDataChannelListenerWithTimeout() {
     let requiredChannels;
     const timeoutDuration = 15000;
     let timeoutId;
-    if (botDeviceType == "pi" || botDeviceType == "dropbear") {
-      requiredChannels = 2;
-    } else {
+    if (botDeviceType == "pc") {
       requiredChannels = 1;
+    } else {
+      requiredChannels = 2;
     }
 
     peerConnection.ondatachannel = (event) => {
@@ -723,11 +727,6 @@ function setupDataChannelListenerWithTimeout() {
     }, timeoutDuration);
   });
 }
-
-let buffer = new Uint8Array(0);
-let canvas = null;
-let ctx = null;
-let videoChannel = null;
 
 function detectFormat(data) {
   const mjpegStartMarker = [0xFF, 0xD8];
