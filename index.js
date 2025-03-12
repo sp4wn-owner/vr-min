@@ -767,7 +767,6 @@ function findEndMarker(data, startIdx) {
 }
 
 function initVideoCanvas(videoWidth, videoHeight) {
-  const remoteVideo = document.getElementById('remoteVideo');
   remoteVideo.videoWidth = videoWidth;
   remoteVideo.videoHeight = videoHeight;
 
@@ -800,8 +799,6 @@ function initVideoCanvas(videoWidth, videoHeight) {
 }
 
 function drawStreamFrame() {
-  const remoteVideo = document.getElementById('remoteVideo');
-
   if (!canvas && remoteVideo.readyState >= 2) {
     initVideoCanvas(remoteVideo.videoWidth, remoteVideo.videoHeight);
   }
@@ -869,7 +866,6 @@ function handleVideoChannel(channel, incrementChannelCounter) {
           const frame = buffer.slice(startIdx, frameEnd);
           console.log('Extracted MJPEG frame:', frame.byteLength, 'bytes');
           const blob = new Blob([frame], { type: 'image/jpeg' });
-          const remoteVideo = document.getElementById('remoteVideo');
           remoteVideo.srcObject = null;
           remoteVideo.src = URL.createObjectURL(blob);
 
@@ -915,7 +911,6 @@ function handleVideoChannel(channel, incrementChannelCounter) {
     console.error("Video channel error:", error);
   };
 
-  const remoteVideo = document.getElementById('remoteVideo');
   if (remoteVideo.srcObject) {
     remoteVideo.onloadedmetadata = () => {
       drawStreamFrame();
